@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "@/app/page";
 
@@ -100,5 +100,68 @@ describe("Home page render states", () => {
     );
     expect(screen.queryByRole("heading", { name: "Job #1" })).not.toBeInTheDocument();
     expect(screen.getByText("Accept Job")).toBeDisabled();
+  });
+
+  it("supports bookmarking jobs and favorites filter", async () => {
+    mockGetJobCount.mockResolvedValue(2);
+    mockGetJob
+      .mockResolvedValueOnce({
+        client: "GCLIENT",
+        freelancer: null,
+        amount: "25000000",
+        description_hash: "hash-two",
+        status: "Open",
+        created_at: "1710000000",
+        deadline: "0",
+        token: "GTOKEN",
+        revision_count: 0,
+      })
+      .mockResolvedValueOnce({
+        client: "GCLIENT",
+        freelancer: null,
+        amount: "10000000",
+        description_hash: "hash-one",
+        status: "Open",
+        created_at: "1710000001",
+        deadline: "0",
+        token: "GTOKEN",
+        revision_count: 0,
+      });
+
+    render(<HomePage />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Job #2" })).toBeInTheDocument(),
+    );
+    const bookmarkButtons = screen.getAllByRole("button", { name: "Bookmark" });
+    fireEvent.click(bookmarkButtons[0]);
+    fireEvent.click(screen.getByLabelText("Favorites only"));
+    expect(screen.getByRole("heading", { name: "Job #2" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Job #1" })).not.toBeInTheDocument();
+  });
+
+  it("announces result counts without duplicate spam", async () => {
+    mockGetJobCount.mockResolvedValue(1);
+    mockGetJob.mockResolvedValue({
+      client: "GCLIENT",
+      freelancer: null,
+      amount: "25000000",
+      description_hash: "hash-two",
+      status: "Open",
+      created_at: "1710000000",
+      deadline: "0",
+      token: "GTOKEN",
+      revision_count: 0,
+    });
+
+    const { rerender } = render(<HomePage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("1 result shown")).toBeInTheDocument(),
+    );
+    rerender(<HomePage />);
+    await waitFor(() =>
+      expect(screen.getByText("1 result shown")).toBeInTheDocument(),
+    );
   });
 });
