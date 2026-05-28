@@ -545,6 +545,25 @@ impl EscrowContract {
         count
     }
 
+    pub fn get_cancelled_jobs_count(e: Env) -> u64 {
+        let total = get_jobs_count(&e);
+        let mut count: u64 = 0;
+        let mut i: u64 = 1;
+        while i <= total {
+            if let Some(job) = e
+                .storage()
+                .persistent()
+                .get::<DataKey, Job>(&DataKey::Job(i))
+            {
+                if job.status == JobStatus::Cancelled {
+                    count += 1;
+                }
+            }
+            i += 1;
+        }
+        count
+    }
+
     pub fn get_jobs_by_status(e: Env, status: JobStatus) -> Vec<Job> {
         let total = get_jobs_count(&e);
         let mut jobs = Vec::new(&e);
@@ -1861,6 +1880,49 @@ mod test {
         client.submit_work(&freelancer, &job_id);
         client.approve_work(&user, &job_id);
         assert_eq!(client.get_open_jobs_count(), 0);
+    }
+
+    #[test]
+    fn get_cancelled_jobs_count_starts_at_zero() {
+        let (_, client, _, _, _, _) = setup();
+        assert_eq!(client.get_cancelled_jobs_count(), 0);
+    }
+
+    #[test]
+    fn get_cancelled_jobs_count_increments_on_cancel() {
+        let (env, client, _, user, _, native_token) = setup();
+        let job_id = client.post_job(&user, &1_000_000i128, &hash(&env), &0u64, &native_token);
+        assert_eq!(client.get_cancelled_jobs_count(), 0);
+        client.cancel_job(&user, &job_id);
+        assert_eq!(client.get_cancelled_jobs_count(), 1);
+    }
+
+    #[test]
+    fn get_cancelled_jobs_count_tracks_multiple_cancel_paths() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let direct_cancel =
+            client.post_job(&user, &1_000_000i128, &hash(&env), &0u64, &native_token);
+        let deadline_cancel = client.post_job(
+            &user,
+            &1_000_000i128,
+            &hash(&env),
+            &(1_710_000_000 + 300),
+            &native_token,
+        );
+        let completed = client.post_job(&user, &1_000_000i128, &hash(&env), &0u64, &native_token);
+
+        client.cancel_job(&user, &direct_cancel);
+        client.accept_job(&freelancer, &deadline_cancel);
+        env.ledger().with_mut(|li| {
+            li.timestamp = 1_710_000_500;
+        });
+        client.enforce_deadline(&user, &deadline_cancel);
+
+        client.accept_job(&freelancer, &completed);
+        client.submit_work(&freelancer, &completed);
+        client.approve_work(&user, &completed);
+
+        assert_eq!(client.get_cancelled_jobs_count(), 2);
     }
 
     fn expect_panic_with_contract_error<F>(f: F, code: u32)

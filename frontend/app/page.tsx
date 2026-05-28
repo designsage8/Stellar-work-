@@ -12,6 +12,8 @@ import { useWallet } from "@/lib/wallet-context";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+const BOOKMARK_STORAGE_KEY = "stellarwork:bookmarked-jobs";
+
 export default function HomePage() {
   const { wallet } = useWallet();
   const [jobs, setJobs] = useState<Array<{ id: number; job: Job }>>([]);
@@ -23,11 +25,34 @@ export default function HomePage() {
   const [pageSize, setPageSize] = useState(10);
   const [totalJobs, setTotalJobs] = useState(0);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [showBookmarkedOnly, setShowBookmarkedOnly] = useState(false);
+  const [bookmarkedIds, setBookmarkedIds] = useState<number[]>([]);
+  const [resultsAnnouncement, setResultsAnnouncement] = useState("");
+  const [lastAnnouncedSignature, setLastAnnouncedSignature] = useState("");
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(totalJobs / pageSize)),
     [pageSize, totalJobs],
   );
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(BOOKMARK_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as unknown;
+      if (!Array.isArray(parsed)) return;
+      const validIds = parsed
+        .map((entry) => Number(entry))
+        .filter((value) => Number.isInteger(value) && value > 0);
+      setBookmarkedIds(validIds);
+    } catch {
+      // Ignore malformed local storage data and use empty bookmarks.
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(bookmarkedIds));
+  }, [bookmarkedIds]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -88,6 +113,24 @@ export default function HomePage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const visibleJobs = useMemo(
+    () =>
+      showBookmarkedOnly
+        ? jobs.filter(({ id }) => bookmarkedIds.includes(id))
+        : jobs,
+    [bookmarkedIds, jobs, showBookmarkedOnly],
+  );
+
+  useEffect(() => {
+    if (loading) return;
+    const currentSignature = `${showBookmarkedOnly}:${visibleJobs.map(({ id }) => id).join(",")}`;
+    if (currentSignature === lastAnnouncedSignature) return;
+    setResultsAnnouncement(
+      `${visibleJobs.length} ${visibleJobs.length === 1 ? "result" : "results"} shown`,
+    );
+    setLastAnnouncedSignature(currentSignature);
+  }, [lastAnnouncedSignature, loading, showBookmarkedOnly, visibleJobs]);
 
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
 
@@ -154,6 +197,9 @@ export default function HomePage() {
           Refreshing jobs…
         </p>
       )}
+      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {resultsAnnouncement}
+      </p>
 
       {latestTxHash && (
         <p className="text-sm text-slate-600">
@@ -169,10 +215,14 @@ export default function HomePage() {
         </p>
       )}
 
-      {!loading && jobs.length === 0 && !error && (
+      {!loading && visibleJobs.length === 0 && !error && (
         <EmptyState
-          title="No open jobs found"
-          description="New jobs will appear here as clients post them."
+          title={showBookmarkedOnly ? "No favorites found" : "No open jobs found"}
+          description={
+            showBookmarkedOnly
+              ? "Bookmark jobs to quickly find them here."
+              : "New jobs will appear here as clients post them."
+          }
         />
       )}
 
@@ -180,29 +230,45 @@ export default function HomePage() {
         title="Jobs Display"
         description="Default sort is newest first."
       >
-        <div className="flex items-center gap-2 text-sm text-slate-600">
-          <label htmlFor="jobs-sort-order">Sort:</label>
-          <select
-            id="jobs-sort-order"
-            value={sortOrder}
-            onChange={(event) => {
-              setSortOrder(event.target.value as "newest" | "oldest");
-              setPage(1);
-            }}
-            className="rounded-md border border-slate-300 bg-white px-2 py-1"
-            disabled={loading}
-          >
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-          </select>
-        </div>
+        <fieldset className="space-y-3 rounded-md border border-slate-200 p-3">
+          <legend className="px-1 text-sm font-medium text-slate-700">
+            Sort and filter job results
+          </legend>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+            <label htmlFor="jobs-sort-order">Sort:</label>
+            <select
+              id="jobs-sort-order"
+              value={sortOrder}
+              onChange={(event) => {
+                setSortOrder(event.target.value as "newest" | "oldest");
+                setPage(1);
+              }}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1"
+              disabled={loading}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showBookmarkedOnly}
+                onChange={(event) => {
+                  setShowBookmarkedOnly(event.target.checked);
+                }}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              Favorites only
+            </label>
+          </div>
+        </fieldset>
       </SectionCard>
 
       <ul
         className="grid list-none gap-4 md:grid-cols-2"
         aria-label="Open jobs"
       >
-        {jobs.map(({ id, job }) => (
+        {visibleJobs.map(({ id, job }) => (
           <li key={id}>
             <article className="h-full rounded-lg border border-slate-200 bg-white p-4 transition-shadow hover:shadow-md">
               <Link href={`/job/${id}`} className="block">
@@ -265,6 +331,20 @@ export default function HomePage() {
                 >
                   {actionLoading === id ? "Processing..." : "Accept Job"}
                 </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    setBookmarkedIds((prev) =>
+                      prev.includes(id)
+                        ? prev.filter((value) => value !== id)
+                        : [...prev, id],
+                    );
+                  }}
+                  aria-pressed={bookmarkedIds.includes(id)}
+                >
+                  {bookmarkedIds.includes(id) ? "Bookmarked" : "Bookmark"}
+                </button>
               </div>
               {!wallet && (
                 <p className="mt-2 text-xs text-amber-700">
@@ -278,7 +358,8 @@ export default function HomePage() {
 
       {totalJobs > 0 && (
         <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
+          <fieldset className="flex items-center gap-2 text-sm text-slate-600">
+            <legend className="sr-only">Pagination settings</legend>
             <label htmlFor="jobs-page-size">Page size:</label>
             <select
               id="jobs-page-size"
@@ -296,7 +377,7 @@ export default function HomePage() {
                 </option>
               ))}
             </select>
-          </div>
+          </fieldset>
 
           <div className="flex items-center gap-2">
             <button
