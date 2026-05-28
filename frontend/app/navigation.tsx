@@ -44,7 +44,7 @@ export function Navigation() {
           StellarWork
         </Link>
 
-        <div className="hidden min-w-0 items-center gap-4 lg:gap-6 md:flex">
+        <div className="hidden min-w-0 items-center gap-4 lg:flex">
           <nav
             aria-label="Main navigation"
             className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm"
@@ -67,7 +67,7 @@ export function Navigation() {
         </div>
 
         <button
-          className="rounded-md p-2 text-slate-700 hover:bg-slate-100 md:hidden"
+          className="rounded-md p-2 text-slate-700 hover:bg-slate-100 lg:hidden"
           onClick={() => setMenuOpen(!menuOpen)}
           aria-label="Toggle navigation menu"
         >
@@ -97,8 +97,8 @@ export function Navigation() {
       </div>
 
       {menuOpen && (
-        <div className="border-t border-slate-200 px-4 py-3 md:hidden">
-          <nav aria-label="Main navigation" className="grid grid-cols-2 gap-3 text-sm">
+        <div className="border-t border-slate-200 px-4 py-3 lg:hidden">
+          <nav aria-label="Main navigation" className="flex flex-col gap-2 text-sm">
              {links.map(({ href, label }) => (
               <Link
                 key={href}

@@ -36,7 +36,7 @@ const STATUS_COLORS: Record<JobStatus, string> = {
 export default function AdminPage() {
   const { wallet, connectWallet } = useWallet();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [fees, setFees] = useState<number>(0);
+  const [fees, setFees] = useState<bigint>(0n);
   const [nativeToken, setNativeToken] = useState<string>("");
   const [jobs, setJobs] = useState<Array<{ id: number; job: Job }>>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +53,7 @@ export default function AdminPage() {
       setNativeToken(token);
 
       const accrued = await getFees(token);
-      setFees(accrued);
+      setFees(BigInt(accrued));
 
       const count = await getJobCount();
       const fetched: Array<{ id: number; job: Job }> = [];
@@ -83,7 +83,7 @@ export default function AdminPage() {
     } else {
       setLoading(false);
       setIsAdmin(null);
-      setFees(0);
+      setFees(0n);
       setJobs([]);
       setError(null);
       setSuccessMessage(null);
@@ -98,7 +98,7 @@ export default function AdminPage() {
     try {
       await withdrawFees(nativeToken);
       setSuccessMessage(`Successfully withdrew ${toXlm(fees)} XLM in fees.`);
-      setFees(0);
+      setFees(0n);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Withdraw failed.";
       if (msg.includes("Unauthorized") || msg.includes("#2")) {
@@ -172,15 +172,15 @@ export default function AdminPage() {
       )}
 
       <SectionCard title="Platform Fees">
-        <p className="mt-2 flex items-baseline gap-2 text-3xl font-bold">
-          <span className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
+        <p className="mt-2 flex min-w-0 items-baseline gap-2 text-3xl font-bold">
+          <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
             {toXlm(fees)}
           </span>
           <span className="shrink-0 text-base font-semibold">XLM</span>
         </p>
         <p className="text-sm text-slate-500">Accrued platform fees (2.5%)</p>
         <button
-          disabled={withdrawing || fees <= 0}
+          disabled={withdrawing || fees <= 0n}
           className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleWithdraw}
         >
@@ -215,6 +215,9 @@ export default function AdminPage() {
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-left text-sm">
+              <caption className="sr-only">
+                All jobs with status, participants, amount, and deadline
+              </caption>
               <thead>
                 <tr className="border-b border-slate-200 text-xs text-slate-500">
                   <th scope="col" className="pb-2 pr-4">ID</th>
@@ -243,8 +246,8 @@ export default function AdminPage() {
                       {job.freelancer ? `${job.freelancer.slice(0, 8)}...` : "-"}
                     </td>
                     <td className="py-2 pr-4 text-right">
-                      <span className="inline-flex items-baseline justify-end gap-1">
-                        <span className="max-w-[10rem] overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
+                      <span className="inline-flex min-w-0 items-baseline justify-end gap-1">
+                        <span className="min-w-0 max-w-[10rem] overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
                           {toXlm(job.amount)}
                         </span>
                         <span className="shrink-0">XLM</span>

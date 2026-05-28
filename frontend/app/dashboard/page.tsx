@@ -277,8 +277,8 @@ function JobCard({
         </span>
       </div>
       <div className="mt-2 space-y-1 text-sm text-slate-600">
-        <p className="flex items-baseline gap-1">
-          <span className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
+        <p className="flex min-w-0 items-baseline gap-1">
+          <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
             {toXlm(job.amount)}
           </span>
           <span className="shrink-0">XLM</span>

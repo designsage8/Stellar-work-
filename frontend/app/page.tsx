@@ -274,8 +274,8 @@ export default function HomePage() {
               <Link href={`/job/${id}`} className="block">
                 <h2 className="text-lg font-medium hover:underline">Job #{id}</h2>
               </Link>
-              <p className="mt-2 flex items-baseline gap-1 text-sm font-bold text-slate-700">
-                <span className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
+              <p className="mt-2 flex min-w-0 items-baseline gap-1 text-sm font-bold text-slate-700">
+                <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
                   {toXlm(job.amount)}
                 </span>
                 <span className="shrink-0">XLM</span>

@@ -83,10 +83,14 @@ export default function ProfilePageClient({ address }: { address: string }) {
   const jobsCompleted = jobs.filter((j) => j.job.status === "Completed").length;
   const totalEarnedStroops = jobs
     .filter((j) => j.role === "freelancer" && j.job.status === "Completed")
-    .reduce((sum, j) => sum + Number(j.job.amount) * 0.975, 0);
+    .reduce((sum, j) => {
+      const amount = BigInt(j.job.amount);
+      const fee = (amount * 250n) / 10_000n;
+      return sum + (amount - fee);
+    }, 0n);
   const totalSpentStroops = jobs
     .filter((j) => j.role === "client" && j.job.status === "Completed")
-    .reduce((sum, j) => sum + Number(j.job.amount), 0);
+    .reduce((sum, j) => sum + BigInt(j.job.amount), 0n);
 
   if (!addressValid) {
     return (
@@ -147,8 +151,8 @@ export default function ProfilePageClient({ address }: { address: string }) {
               <p className="text-xs text-slate-500">Jobs Completed</p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4 text-center">
-              <p className="flex items-baseline justify-center gap-1 text-2xl font-bold">
-                <span className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
+              <p className="flex min-w-0 items-baseline justify-center gap-1 text-2xl font-bold">
+                <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
                   {toXlm(totalEarnedStroops)}
                 </span>
                 <span className="shrink-0 text-xs font-semibold">XLM</span>
@@ -156,8 +160,8 @@ export default function ProfilePageClient({ address }: { address: string }) {
               <p className="text-xs text-slate-500">XLM Earned</p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-4 text-center">
-              <p className="flex items-baseline justify-center gap-1 text-2xl font-bold">
-                <span className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
+              <p className="flex min-w-0 items-baseline justify-center gap-1 text-2xl font-bold">
+                <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
                   {toXlm(totalSpentStroops)}
                 </span>
                 <span className="shrink-0 text-xs font-semibold">XLM</span>
@@ -175,6 +179,9 @@ export default function ProfilePageClient({ address }: { address: string }) {
             ) : (
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full text-left text-sm">
+                  <caption className="sr-only">
+                    Job history with role, status, amount, and date
+                  </caption>
                   <thead>
                     <tr className="border-b border-slate-200 text-xs text-slate-500">
                       <th scope="col" className="pb-2 pr-4">ID</th>
@@ -201,8 +208,8 @@ export default function ProfilePageClient({ address }: { address: string }) {
                           </span>
                         </td>
                         <td className="py-2 pr-4 text-right">
-                          <span className="inline-flex items-baseline justify-end gap-1">
-                            <span className="max-w-[10rem] overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
+                          <span className="inline-flex min-w-0 items-baseline justify-end gap-1">
+                            <span className="min-w-0 max-w-[10rem] overflow-hidden text-ellipsis whitespace-nowrap tabular-nums">
                               {toXlm(job.amount)}
                             </span>
                             <span className="shrink-0">XLM</span>
