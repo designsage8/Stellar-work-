@@ -2,6 +2,8 @@
 
 import ErrorBanner from "@/components/ErrorBanner";
 import EmptyState from "@/components/EmptyState";
+import InfoTooltip from "@/components/InfoTooltip";
+import NoResultsState from "@/components/NoResultsState";
 import JobCardSkeleton from "@/components/JobCardSkeleton";
 import SectionCard from "@/components/SectionCard";
 import { acceptJob, getJob, getJobCount } from "@/lib/contract";
@@ -49,6 +51,10 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (viewMode === "grid") {
+      sessionStorage.removeItem(VIEW_MODE_STORAGE_KEY);
+      return;
+    }
     sessionStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
   }, [viewMode]);
 
@@ -73,6 +79,10 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (bookmarkedIds.length === 0) {
+      localStorage.removeItem(BOOKMARK_STORAGE_KEY);
+      return;
+    }
     localStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(bookmarkedIds));
   }, [bookmarkedIds]);
 
@@ -231,13 +241,22 @@ export default function HomePage() {
         </button>
       </div>
 
-      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+      {error && (
+        <ErrorBanner
+          message={error}
+          onDismiss={() => setError(null)}
+          onRetry={() => void refresh()}
+        />
+      )}
 
       {loading && jobs.length === 0 && (
-        <div className="grid gap-4 md:grid-cols-2" aria-label="Loading open jobs">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">Loading jobs...</p>
+          <div className="grid gap-4 md:grid-cols-2" aria-label="Loading open jobs">
           {Array.from({ length: 6 }).map((_, index) => (
             <JobCardSkeleton key={index} />
           ))}
+          </div>
         </div>
       )}
 
@@ -271,14 +290,21 @@ export default function HomePage() {
       )}
 
       {!loading && visibleJobs.length === 0 && !error && (
-        <EmptyState
-          title={showBookmarkedOnly ? "No favorites found" : "No open jobs found"}
-          description={
-            showBookmarkedOnly
-              ? "Bookmark jobs to quickly find them here."
-              : "New jobs will appear here as clients post them."
-          }
-        />
+        <>
+          {showBookmarkedOnly && jobs.length > 0 ? (
+            <NoResultsState
+              title="No favorites found"
+              description="No bookmarked jobs match the current feed. Turn off favorites only to see everything again."
+              actionLabel="Show all jobs"
+              onAction={() => setShowBookmarkedOnly(false)}
+            />
+          ) : (
+            <EmptyState
+              title="No open jobs found"
+              description="New jobs will appear here as clients post them."
+            />
+          )}
+        </>
       )}
 
       <SectionCard
@@ -290,7 +316,13 @@ export default function HomePage() {
             Sort and filter job results
           </legend>
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-            <label htmlFor="jobs-sort-order">Sort:</label>
+            <div className="inline-flex items-center gap-2">
+              <label htmlFor="jobs-sort-order">Sort:</label>
+              <InfoTooltip
+                label="Sort and filter jobs help"
+                content="Newest first surfaces recent jobs at the top. Favorites only filters to bookmarked jobs in this browser."
+              />
+            </div>
             <select
               id="jobs-sort-order"
               value={sortOrder}
@@ -395,7 +427,10 @@ export default function HomePage() {
                     <h2 className="flex items-center gap-2 text-lg font-medium hover:underline">
                       Job #{id}
                       {newJobIds.has(id) && (
-                        <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                        <span
+                          aria-hidden="true"
+                          className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800"
+                        >
                           New
                         </span>
                       )}
