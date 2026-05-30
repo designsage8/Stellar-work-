@@ -3,6 +3,6 @@ import { crypto } from 'node:crypto'
 
 // Polyfill crypto for stellar-sdk in node/jsdom environment
 if (!globalThis.crypto) {
-  // @ts-ignore
+  // @ts-expect-error - jsdom needs a crypto polyfill for stellar-sdk
   globalThis.crypto = crypto
 }

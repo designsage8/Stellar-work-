@@ -10,7 +10,7 @@ import {
 import EmptyState from "@/components/EmptyState";
 import ErrorBanner from "@/components/ErrorBanner";
 import SectionCard from "@/components/SectionCard";
-import { toXlm } from "@/lib/format";
+import { formatDeadline, toXlm } from "@/lib/format";
 import { useWallet } from "@/lib/wallet-context";
 import type { Job, JobStatus } from "@/lib/types";
 import { useEffect, useState, useCallback } from "react";
@@ -254,11 +254,11 @@ export default function AdminPage() {
                       </span>
                     </td>
                     <td className="py-2 pr-4 text-xs">
-                      {job.deadline === "0"
-                        ? "None"
-                        : new Date(
-                            Number(job.deadline) * 1000,
-                          ).toLocaleDateString()}
+                      {(() => {
+                        const deadline = formatDeadline(job.deadline);
+                        if (!deadline) return "None";
+                        return `${deadline.isPast ? "Past due" : deadline.relative} • ${deadline.exact}`;
+                      })()}
                     </td>
                   </tr>
                 ))}

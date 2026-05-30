@@ -4,7 +4,7 @@ import CancelJobConfirmModal from "@/components/CancelJobConfirmModal";
 import LoadingState from "@/components/LoadingState";
 import { useToast } from "@/components/ToastProvider";
 import { acceptJob, approveWork, cancelJob, getJob, submitWork } from "@/lib/contract";
-import { toXlm } from "@/lib/format";
+import { formatDeadline, toXlm } from "@/lib/format";
 import { getExplorerTxUrl } from "@/lib/stellar";
 import type { Job } from "@/lib/types";
 import { useWallet } from "@/lib/wallet-context";
@@ -223,7 +223,11 @@ export default function JobDetailPage() {
         </div>
         <p>
           <strong>Deadline:</strong>{" "}
-          {job.deadline === "0" ? "No deadline" : new Date(Number(job.deadline) * 1000).toLocaleString()}
+          {(() => {
+            const deadline = formatDeadline(job.deadline);
+            if (!deadline) return "No deadline";
+            return `${deadline.isPast ? "Past due" : deadline.relative} • ${deadline.exact}`;
+          })()}
         </p>
 
         {!wallet && (
