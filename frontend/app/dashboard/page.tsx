@@ -12,9 +12,10 @@ import {
 import CancelJobConfirmModal from "@/components/CancelJobConfirmModal";
 import EmptyState from "@/components/EmptyState";
 import ErrorBanner from "@/components/ErrorBanner";
+import JobCardSkeleton from "@/components/JobCardSkeleton";
 import SectionCard from "@/components/SectionCard";
 import { useToast } from "@/components/ToastProvider";
-import { toXlm } from "@/lib/format";
+import { formatDeadline, toXlm } from "@/lib/format";
 import { useWallet } from "@/lib/wallet-context";
 import type { Job, JobStatus } from "@/lib/types";
 import { useEffect, useState, useCallback, useRef, type KeyboardEvent } from "react";
@@ -44,11 +45,6 @@ const STATUS_COLORS: Record<JobStatus, string> = {
   Cancelled: "bg-red-100 text-red-800",
   Disputed: "bg-orange-100 text-orange-800",
 };
-
-function formatDeadline(deadline: string) {
-  if (deadline === "0") return "No deadline";
-  return new Date(Number(deadline) * 1000).toLocaleDateString();
-}
 
 export default function DashboardPage() {
   const { wallet, connectWallet } = useWallet();
@@ -221,7 +217,13 @@ export default function DashboardPage() {
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-      {loading && <p className="text-sm text-slate-600">Loading jobs...</p>}
+      {loading && (
+        <div className="grid gap-4 md:grid-cols-2" aria-label="Loading jobs">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <JobCardSkeleton key={index} />
+          ))}
+        </div>
+      )}
 
       {!loading && (
         <>
@@ -347,7 +349,13 @@ function JobCard({
           </span>
           <span className="shrink-0">XLM</span>
         </p>
-        <p>Deadline: {formatDeadline(job.deadline)}</p>
+        <p>
+          {(() => {
+            const deadline = formatDeadline(job.deadline);
+            if (!deadline) return "Deadline: No deadline";
+            return `Deadline: ${deadline.isPast ? "Past due" : deadline.relative} • ${deadline.exact}`;
+          })()}
+        </p>
         {role === "client" && job.freelancer && (
           <p className="truncate">Freelancer: {job.freelancer}</p>
         )}

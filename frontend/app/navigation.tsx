@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWallet, WalletButton } from "@/lib/wallet-context";
 import { useState, useEffect, useRef } from "react";
+import NetworkBadge from "@/components/NetworkBadge";
 
 export function Navigation() {
   const pathname = usePathname();
@@ -13,10 +14,6 @@ export function Navigation() {
   const menuRef = useRef<HTMLDivElement>(null);
   const firstLinkRef = useRef<HTMLAnchorElement>(null);
   const lastLinkRef = useRef<HTMLAnchorElement>(null);
-
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [wallet]);
 
   // Handle Escape key to close menu
   useEffect(() => {
@@ -100,16 +97,19 @@ export function Navigation() {
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4">
-        <Link href="/" className="shrink-0 text-lg font-semibold">
-          StellarWork
-        </Link>
+        <div className="flex min-w-0 items-center gap-3">
+          <Link href="/" className="shrink-0 text-lg font-semibold">
+            StellarWork
+          </Link>
+          <NetworkBadge />
+        </div>
 
         <div className="hidden min-w-0 items-center gap-4 lg:flex">
           <nav
             aria-label="Main navigation"
             className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm"
           >
-             {links.map(({ href, label }) => (
+            {links.map(({ href, label }) => (
               <Link
                 key={href}
                 href={href}
@@ -165,7 +165,7 @@ export function Navigation() {
           onKeyDown={handleMenuKeyDown}
         >
           <nav aria-label="Main navigation" className="flex flex-col gap-2 text-sm">
-             {links.map(({ href, label }, index) => (
+            {links.map(({ href, label }, index) => (
               <Link
                 key={href}
                 ref={index === 0 ? firstLinkRef : index === links.length - 1 ? lastLinkRef : undefined}
