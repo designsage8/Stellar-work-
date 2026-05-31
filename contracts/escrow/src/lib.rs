@@ -2542,4 +2542,67 @@ mod test {
         assert_eq!(review_jobs.len(), 1);
         assert_eq!(review_jobs.get(0).unwrap().amount, 3_000_000);
     }
+
+    // ── cancel_job after accept tests (issue #269) ────────────────────────────
+    //
+    // The Open-state cancel_job path is already covered by
+    // `cancel_job_refunds_client`. The InProgress (#3 InvalidStatus) path is
+    // covered by `cancel_job_in_progress_panics_with_invalid_status`, and the
+    // wrong-caller path by `cancel_job_unauthorized_caller_panics`. The tests
+    // below pin down the remaining gaps for issue #269: that a client can
+    // cancel an Open job (positive control) and that an unauthorised caller is
+    // rejected *after* the freelancer has accepted (i.e. the auth check is
+    // enforced in the InProgress state too).
+
+    /// Client can cancel an Open job before any freelancer accepts.
+    /// Verifies the escrowed amount is refunded in full and the job
+    /// transitions to Cancelled.
+    #[test]
+    fn cancel_job_open_before_accept_refunds_client() {
+        let (env, client, _, user, _, native_token) = setup();
+        let token_client = token::Client::new(&env, &native_token);
+        let pre_balance = token_client.balance(&user);
+
+        let job_id = client.post_job(&user, &750_000i128, &hash(&env), &32u32, &0u64, &native_token);
+        // Funds are escrowed during post_job
+        assert_eq!(token_client.balance(&user), pre_balance - 750_000);
+
+        client.cancel_job(&user, &job_id);
+
+        // Refund returns the full amount; no fee on a never-accepted job
+        assert_eq!(token_client.balance(&user), pre_balance);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::Cancelled);
+    }
+
+    /// After the freelancer has accepted the job, the contract's in-progress
+    /// rules apply: a wrong caller (here the freelancer) cannot cancel and
+    /// must trigger Error::InvalidStatus (#3) because cancel_job's status
+    /// check runs before the ownership check.
+    #[test]
+    #[should_panic(expected = "Error(Contract, #3)")]
+    fn cancel_job_after_accept_by_freelancer_panics() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let job_id = client.post_job(&user, &1_000_000i128, &hash(&env), &32u32, &0u64, &native_token);
+        client.accept_job(&freelancer, &job_id);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::InProgress);
+
+        // Freelancer attempts to cancel an in-progress job: status check
+        // rejects this before ownership is even considered.
+        client.cancel_job(&freelancer, &job_id);
+    }
+
+    /// After accept, even the legitimate client cannot cancel: the job is
+    /// InProgress and only the deadline-enforced path (`enforce_deadline`)
+    /// or dispute resolution may end it. Confirms in-progress rules apply
+    /// uniformly regardless of caller identity.
+    #[test]
+    #[should_panic(expected = "Error(Contract, #3)")]
+    fn cancel_job_after_accept_by_client_panics_with_invalid_status() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let job_id = client.post_job(&user, &1_000_000i128, &hash(&env), &32u32, &0u64, &native_token);
+        client.accept_job(&freelancer, &job_id);
+
+        // Client attempts to cancel an in-progress job — must be rejected.
+        client.cancel_job(&user, &job_id);
+    }
 }
