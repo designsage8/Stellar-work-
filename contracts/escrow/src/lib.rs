@@ -2666,4 +2666,44 @@ mod test {
         assert_eq!(job_after.status, JobStatus::InProgress);
         assert_eq!(job_after.freelancer, Option::Some(freelancer));
     }
+
+    // ── get_fees after multiple approvals tests (issue #278) ──────────────────
+
+    /// get_fees returns zero before any job has been approved.
+    #[test]
+    fn get_fees_zero_initially() {
+        let (_, client, _, _, _, native_token) = setup();
+        assert_eq!(client.get_fees(&native_token), 0);
+    }
+
+    /// Fees sum correctly after two approvals on the same token, and a
+    /// subsequent withdraw_fees resets the accrued balance to zero.
+    #[test]
+    fn get_fees_sums_after_two_approvals_and_resets_on_withdraw() {
+        let (env, client, admin, user, freelancer, native_token) = setup();
+
+        assert_eq!(client.get_fees(&native_token), 0);
+
+        // First job: 1_000_000 amount, default fee 250 bps → 25_000 fee
+        let job_id_a = client.post_job(&user, &1_000_000i128, &hash(&env), &32u32, &0u64, &native_token);
+        client.accept_job(&freelancer, &job_id_a);
+        client.submit_work(&freelancer, &job_id_a);
+        client.approve_work(&user, &job_id_a);
+        assert_eq!(client.get_fees(&native_token), 25_000);
+
+        // Second job: 2_000_000 amount → 50_000 fee. Accrued should sum.
+        let job_id_b = client.post_job(&user, &2_000_000i128, &hash(&env), &32u32, &0u64, &native_token);
+        client.accept_job(&freelancer, &job_id_b);
+        client.submit_work(&freelancer, &job_id_b);
+        client.approve_work(&user, &job_id_b);
+        assert_eq!(client.get_fees(&native_token), 75_000);
+
+        // withdraw_fees by admin returns the full accrued balance and resets
+        // the accumulator to zero.
+        let token_client = token::Client::new(&env, &native_token);
+        let admin_pre = token_client.balance(&admin);
+        client.withdraw_fees(&native_token);
+        assert_eq!(token_client.balance(&admin) - admin_pre, 75_000);
+        assert_eq!(client.get_fees(&native_token), 0);
+    }
 }
