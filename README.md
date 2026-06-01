@@ -178,6 +178,8 @@ soroban contract invoke \
 For a command-only deployment reference, see `docs/testnet-deployment-guide.md`.
 For environment configuration, see `docs/environments.md`.
 
+For the full documentation index, see [docs/README.md](docs/README.md).
+
 
 ## License
 

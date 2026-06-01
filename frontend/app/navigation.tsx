@@ -3,16 +3,73 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useWallet, WalletButton } from "@/lib/wallet-context";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import NetworkBadge from "@/components/NetworkBadge";
 
 export function Navigation() {
   const pathname = usePathname();
   const { wallet } = useWallet();
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const firstLinkRef = useRef<HTMLAnchorElement>(null);
+  const lastLinkRef = useRef<HTMLAnchorElement>(null);
 
+  // Handle Escape key to close menu
   useEffect(() => {
-    setMenuOpen(false);
-  }, [wallet]);
+    if (!menuOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [menuOpen]);
+
+  // Focus management when menu opens/closes
+  useEffect(() => {
+    if (menuOpen) {
+      firstLinkRef.current?.focus();
+    }
+  }, [menuOpen]);
+
+  // Focus trap within menu
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const links = menuRef.current?.querySelectorAll("a");
+    if (!links || links.length === 0) return;
+
+    const firstLink = links[0] as HTMLAnchorElement;
+    const lastLink = links[links.length - 1] as HTMLAnchorElement;
+    const currentIndex = Array.from(links).indexOf(document.activeElement as HTMLAnchorElement);
+
+    if (event.key === "Tab") {
+      if (event.shiftKey) {
+        // Shift + Tab
+        if (document.activeElement === firstLink) {
+          event.preventDefault();
+          lastLink.focus();
+        }
+      } else {
+        // Tab
+        if (document.activeElement === lastLink) {
+          event.preventDefault();
+          firstLink.focus();
+        }
+      }
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      const nextIndex = currentIndex < links.length - 1 ? currentIndex + 1 : 0;
+      (links[nextIndex] as HTMLAnchorElement).focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      const prevIndex = currentIndex > 0 ? currentIndex - 1 : links.length - 1;
+      (links[prevIndex] as HTMLAnchorElement).focus();
+    }
+  };
 
   const adminAddress = process.env.NEXT_PUBLIC_ADMIN_ADDRESS;
   const showAdmin = wallet && (adminAddress ? wallet === adminAddress : true);
@@ -40,16 +97,19 @@ export function Navigation() {
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4">
-        <Link href="/" className="shrink-0 text-lg font-semibold">
-          StellarWork
-        </Link>
+        <div className="flex min-w-0 items-center gap-3">
+          <Link href="/" className="shrink-0 text-lg font-semibold">
+            StellarWork
+          </Link>
+          <NetworkBadge />
+        </div>
 
         <div className="hidden min-w-0 items-center gap-4 lg:flex">
           <nav
             aria-label="Main navigation"
             className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm"
           >
-             {links.map(({ href, label }) => (
+            {links.map(({ href, label }) => (
               <Link
                 key={href}
                 href={href}
@@ -67,9 +127,11 @@ export function Navigation() {
         </div>
 
         <button
+          ref={menuButtonRef}
           className="rounded-md p-2 text-slate-700 hover:bg-slate-100 lg:hidden"
           onClick={() => setMenuOpen(!menuOpen)}
           aria-label="Toggle navigation menu"
+          aria-expanded={menuOpen}
         >
           <svg
             className="h-6 w-6"
@@ -97,18 +159,26 @@ export function Navigation() {
       </div>
 
       {menuOpen && (
-        <div className="border-t border-slate-200 px-4 py-3 lg:hidden">
+        <div
+          ref={menuRef}
+          className="border-t border-slate-200 px-4 py-3 lg:hidden"
+          onKeyDown={handleMenuKeyDown}
+        >
           <nav aria-label="Main navigation" className="flex flex-col gap-2 text-sm">
-             {links.map(({ href, label }) => (
+            {links.map(({ href, label }, index) => (
               <Link
                 key={href}
+                ref={index === 0 ? firstLinkRef : index === links.length - 1 ? lastLinkRef : undefined}
                 href={href}
                 className={
                   isActive(href)
                     ? "rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-900"
                     : "rounded-md px-2 py-1 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }
-                onClick={() => setMenuOpen(false)}
+                onClick={() => {
+                  setMenuOpen(false);
+                  menuButtonRef.current?.focus();
+                }}
               >
                 {label}
               </Link>

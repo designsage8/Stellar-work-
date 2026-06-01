@@ -1,10 +1,12 @@
 "use client";
 
 import CancelJobConfirmModal from "@/components/CancelJobConfirmModal";
+import InfoTooltip from "@/components/InfoTooltip";
 import LoadingState from "@/components/LoadingState";
 import { useToast } from "@/components/ToastProvider";
+import StatusPill from "@/components/StatusPill";
 import { acceptJob, approveWork, cancelJob, getJob, submitWork } from "@/lib/contract";
-import { toXlm } from "@/lib/format";
+import { formatDeadline, toXlm } from "@/lib/format";
 import { getExplorerTxUrl } from "@/lib/stellar";
 import type { Job } from "@/lib/types";
 import { useWallet } from "@/lib/wallet-context";
@@ -154,16 +156,29 @@ export default function JobDetailPage() {
     return (
       <section className="space-y-4">
         <h1 className="text-2xl font-semibold">Job #{id}</h1>
-        <p className="text-sm text-slate-700">{error ?? "Job not found."}</p>
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          Back to Home
-        </Link>
+        <div className="rounded-lg border border-slate-200 bg-white p-5 text-sm">
+          <p className="text-slate-700">{error ?? "Job not found."}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {error && error !== "Job not found." && (
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="rounded-md bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-700"
+              >
+                Retry
+              </button>
+            )}
+            <Link href="/" className="rounded-md border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-50">
+              Back to Home
+            </Link>
+          </div>
+        </div>
       </section>
     );
   }
 
   return (
-    <section className="space-y-6 pb-28 sm:pb-32">
+    <section className="space-y-6 pb-6 sm:pb-6">
       <div className="flex items-center gap-4">
         <Link href="/" className="text-sm text-blue-600 hover:underline">
           Back
@@ -192,7 +207,7 @@ export default function JobDetailPage() {
 
       <article className="space-y-2 rounded-lg border border-slate-200 bg-white p-5 text-sm">
         <p>
-          <strong>Status:</strong> {job.status}
+          <strong>Status:</strong> <StatusPill status={job.status} />
         </p>
         <p>
           <strong>Client:</strong> {job.client}
@@ -206,9 +221,16 @@ export default function JobDetailPage() {
         <p>
           <strong>Description:</strong> {getDescription(job.description_hash)}
         </p>
-        <div className="flex items-center gap-2">
-          <p>
-            <strong>Description hash:</strong>{" "}
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="flex items-center gap-2">
+            <strong className="inline-flex items-center gap-2">
+              Description hash
+              <InfoTooltip
+                label="Description hash help"
+                content="This hash identifies the stored job description and is useful when comparing records across devices."
+              />
+              :
+            </strong>
             <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs">
               {job.description_hash}
             </code>
@@ -223,7 +245,11 @@ export default function JobDetailPage() {
         </div>
         <p>
           <strong>Deadline:</strong>{" "}
-          {job.deadline === "0" ? "No deadline" : new Date(Number(job.deadline) * 1000).toLocaleString()}
+          {(() => {
+            const deadline = formatDeadline(job.deadline);
+            if (!deadline) return "No deadline";
+            return `${deadline.isPast ? "Past due" : deadline.relative} • ${deadline.exact}`;
+          })()}
         </p>
 
         {!wallet && (
@@ -234,59 +260,64 @@ export default function JobDetailPage() {
       </article>
 
       {hasPrimaryActions && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-6px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm">
-          <div className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 sm:justify-end">
-            {canAccept && (
-              <button
-                className="min-w-0 flex-1 rounded-md border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 sm:flex-none sm:max-w-48"
-                onClick={() => {
-                  if (!wallet) {
-                    return;
-                  }
-                  void handleAction(() => acceptJob(wallet, id));
-                }}
-                disabled={!wallet || loading}
-                title={!wallet ? "Connect your wallet to accept this job." : undefined}
-                aria-busy={loading}
-              >
-                <span className="block truncate">{loading ? "Processing..." : "Accept Job"}</span>
-              </button>
-            )}
+        <>
+          {/* Spacer to prevent content from being hidden behind sticky footer on mobile */}
+          <div className="h-20 sm:hidden" aria-hidden="true" />
+          
+          <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-6px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:backdrop-blur-none">
+            <div className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 sm:justify-end">
+              {canAccept && (
+                <button
+                  className="min-w-0 flex-1 rounded-md border border-blue-600 bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 sm:flex-none sm:max-w-48 sm:py-2"
+                  onClick={() => {
+                    if (!wallet) {
+                      return;
+                    }
+                    void handleAction(() => acceptJob(wallet, id));
+                  }}
+                  disabled={!wallet || loading}
+                  title={!wallet ? "Connect your wallet to accept this job." : undefined}
+                  aria-busy={loading}
+                >
+                  <span className="block truncate">{loading ? "Processing..." : "Accept Job"}</span>
+                </button>
+              )}
 
-            {canSubmit && (
-              <button
-                className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 sm:flex-none sm:max-w-48"
-                onClick={() => handleAction(() => submitWork(wallet!, id))}
-                disabled={loading}
-                aria-busy={loading}
-              >
-                <span className="block truncate">{loading ? "Processing..." : "Submit Work"}</span>
-              </button>
-            )}
+              {canSubmit && (
+                <button
+                  className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 sm:flex-none sm:max-w-48 sm:py-2"
+                  onClick={() => handleAction(() => submitWork(wallet!, id))}
+                  disabled={loading}
+                  aria-busy={loading}
+                >
+                  <span className="block truncate">{loading ? "Processing..." : "Submit Work"}</span>
+                </button>
+              )}
 
-            {canApprove && (
-              <button
-                className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 sm:flex-none sm:max-w-48"
-                onClick={() => handleAction(() => approveWork(wallet!, id))}
-                disabled={loading}
-                aria-busy={loading}
-              >
-                <span className="block truncate">{loading ? "Processing..." : "Approve Work"}</span>
-              </button>
-            )}
+              {canApprove && (
+                <button
+                  className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 sm:flex-none sm:max-w-48 sm:py-2"
+                  onClick={() => handleAction(() => approveWork(wallet!, id))}
+                  disabled={loading}
+                  aria-busy={loading}
+                >
+                  <span className="block truncate">{loading ? "Processing..." : "Approve Work"}</span>
+                </button>
+              )}
 
-            {canCancel && (
-              <button
-                className="min-w-0 flex-1 rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 sm:flex-none sm:max-w-48"
-                onClick={() => setShowCancelConfirm(true)}
-                disabled={loading}
-                aria-haspopup="dialog"
-              >
-                <span className="block truncate">Cancel Job</span>
-              </button>
-            )}
+              {canCancel && (
+                <button
+                  className="min-w-0 flex-1 rounded-md border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 sm:flex-none sm:max-w-48 sm:py-2"
+                  onClick={() => setShowCancelConfirm(true)}
+                  disabled={loading}
+                  aria-haspopup="dialog"
+                >
+                  <span className="block truncate">Cancel Job</span>
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {showCancelConfirm && (
