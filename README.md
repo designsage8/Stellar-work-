@@ -190,13 +190,35 @@ soroban contract invoke \
 - Core escrow lifecycle (`post_job`, `accept_job`, `submit_work`, `approve_work`, `cancel_job`)
 - Freelancer-initiated job cancellation with penalty (`freelancer_cancel_job`)
 - On-chain job storage and count queries
+- Multi-token support with admin-managed whitelist (`add_allowed_token`, `remove_allowed_token`)
 - IPFS-based job description storage via web3.storage (with localStorage fallback)
 - Platform fee accounting (2.5%)
+- Dispute resolution with flexible client/freelancer splits
+- Contract upgrade mechanism with 24-hour timelock
 - Contract unit tests for core paths
 - Core pages: `/`, `/post-job`, `/job/[id]`, `/dashboard`, `/admin`, `/disputes`, `/profile/[address]`
 
+## Environment Configuration
+
+Copy `frontend/.env.example` to `frontend/.env.local` and set the required variables:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NEXT_PUBLIC_CONTRACT_ID` | Yes | — | Deployed escrow contract ID |
+| `NEXT_PUBLIC_NETWORK` | No | `testnet` | `testnet` or `mainnet` |
+| `NEXT_PUBLIC_SOROBAN_RPC` | No | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint |
+| `NEXT_PUBLIC_NATIVE_TOKEN` | No | — | Default token address for post-job form |
+| `NEXT_PUBLIC_ADMIN_ADDRESS` | No | — | Admin wallet for UI access control |
+| `NEXT_PUBLIC_IPFS_GATEWAY_URL` | No | `https://dweb.link/ipfs/` | IPFS gateway for descriptions |
+| `NEXT_PUBLIC_WEB3_STORAGE_TOKEN` | No | — | Web3.storage token for IPFS uploads |
+
+The frontend validates configuration at runtime via `lib/config.ts`. Missing required variables produce clear error messages. See `docs/environments.md` for the full reference including Testnet/Mainnet notes.
+
 For a command-only deployment reference, see `docs/testnet-deployment-guide.md`.
 For environment configuration, see `docs/environments.md`.
+For API reference, see `docs/CONTRACT.md`.
+For frontend architecture, see `docs/FRONTEND_ARCHITECTURE.md`.
+For third-party integration, see `docs/INTEGRATION.md`.
 
 For the full documentation index, see [docs/README.md](docs/README.md).
 

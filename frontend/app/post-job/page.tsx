@@ -138,7 +138,7 @@ export default function PostJobPage() {
             const cid = await uploadToIpfs(trimmedDescription);
             const result = await postJob(
               wallet,
-              amountStroops,
+              amountStroops!,
               hashHex,
               descriptionPayloadLen,
               deadlineUnix,

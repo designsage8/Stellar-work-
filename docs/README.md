@@ -15,8 +15,10 @@ Index of project documentation. Start with the [root README](../README.md) for s
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | System components, data split, wallet integration, lifecycle |
-| [CONTRACT.md](./CONTRACT.md) | Escrow contract overview and data model |
-| [contract-reference.md](./contract-reference.md) | Method-level contract reference |
+| [CONTRACT.md](./CONTRACT.md) | Full contract API reference, parameters, return types, error codes, and events |
+| [contract-reference.md](./contract-reference.md) | Quick-reference method table |
+| [FRONTEND_ARCHITECTURE.md](./FRONTEND_ARCHITECTURE.md) | Component hierarchy, data flow, wallet connection, and responsive design |
+| [INTEGRATION.md](./INTEGRATION.md) | Third-party developer integration guide with TypeScript examples |
 | [testnet-deployment-guide.md](./testnet-deployment-guide.md) | Deploy escrow to Stellar testnet |
 
 ## Operations & Quality

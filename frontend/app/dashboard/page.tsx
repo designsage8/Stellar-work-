@@ -419,6 +419,9 @@ function JobCard({
           </span>
           <span className="shrink-0">XLM</span>
         </p>
+        <p className="truncate font-mono text-xs text-slate-400">
+          Token: {job.token ? `${job.token.slice(0, 8)}...${job.token.slice(-4)}` : "N/A"}
+        </p>
         <p>
           {(() => {
             const deadline = formatDeadline(job.deadline);
