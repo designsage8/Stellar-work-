@@ -203,6 +203,13 @@ export default function HomePage() {
 
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
 
+  const getDescription = useCallback((hash: string): string => {
+    if (descriptions[hash]) return descriptions[hash];
+    const stored = localStorage.getItem(`job-desc:${hash}`);
+    if (stored) return stored;
+    return "Description unavailable (posted from another device)";
+  }, [descriptions]);
+
   const visibleJobs = useMemo(() => {
     const bookmarkedJobs = showBookmarkedOnly
       ? jobs.filter(({ id }) => bookmarkedIds.includes(id))
@@ -225,7 +232,7 @@ export default function HomePage() {
         freelancer,
       ].some((value) => value.includes(normalizedSearchTerm));
     });
-  }, [bookmarkedIds, jobs, normalizedSearchTerm, showBookmarkedOnly]);
+  }, [bookmarkedIds, getDescription, jobs, normalizedSearchTerm, showBookmarkedOnly]);
 
   useEffect(() => {
     if (loading) return;
@@ -236,13 +243,6 @@ export default function HomePage() {
     );
     setLastAnnouncedSignature(currentSignature);
   }, [lastAnnouncedSignature, loading, normalizedSearchTerm, showBookmarkedOnly, visibleJobs]);
-
-  function getDescription(hash: string): string {
-    if (descriptions[hash]) return descriptions[hash];
-    const stored = localStorage.getItem(`job-desc:${hash}`);
-    if (stored) return stored;
-    return "Description unavailable (posted from another device)";
-  }
 
   function markJobViewed(id: number) {
     setNewJobIds((prev) => {
@@ -608,6 +608,9 @@ export default function HomePage() {
                       {toXlm(job.amount)}
                     </span>
                     <span className="shrink-0">XLM</span>
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-xs text-slate-400">
+                    Token: {job.token ? `${job.token.slice(0, 8)}...${job.token.slice(-4)}` : "N/A"}
                   </p>
                   <p className="mt-1 line-clamp-2 text-sm text-slate-700">
                     {getDescription(job.description_hash)}

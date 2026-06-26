@@ -259,6 +259,12 @@ export default function JobDetailPage() {
           <strong>Amount:</strong> {toXlm(job.amount)} XLM
         </p>
         <p>
+          <strong>Token:</strong>{" "}
+          <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs">
+            {job.token ? `${job.token.slice(0, 8)}...${job.token.slice(-4)}` : "N/A"}
+          </code>
+        </p>
+        <p>
           <strong>Description:</strong>{" "}
           {description ?? localStorage.getItem(`job-desc:${job.description_hash}`) ?? "Description unavailable (posted from another device)"}
         </p>
@@ -305,7 +311,7 @@ export default function JobDetailPage() {
           {/* Spacer to prevent content from being hidden behind sticky footer on mobile */}
           <div className="h-20 sm:hidden" aria-hidden="true" />
           
-          <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-6px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:backdrop-blur-none">
+          <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-6px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm sm:static sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:pb-0 sm:shadow-none sm:backdrop-blur-none">
             <div className="mx-auto flex w-full max-w-4xl flex-wrap gap-2 sm:justify-end">
               {canAccept && (
                 <button

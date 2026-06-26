@@ -525,8 +525,9 @@ export default function DisputesPage() {
   });
 
   async function handleRaiseDispute(jobId: string, reason: string, evidence: string) {
+    if (!wallet) return;
     try {
-      await contractRaiseDispute(jobId);
+      await contractRaiseDispute(wallet, jobId);
       const job = eligibleJobs.find(j => j.id === jobId)!;
       const newDispute: Dispute = {
         id: `D-${String(disputes.length + 1).padStart(3, "0")}`,

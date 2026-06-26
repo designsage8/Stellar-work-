@@ -1,7 +1,6 @@
 "use client";
 
 import ErrorBanner from "@/components/ErrorBanner";
-import JobCardSkeleton from "@/components/JobCardSkeleton";
 import StatusPill from "@/components/StatusPill";
 import { getJob, getJobCount } from "@/lib/contract";
 import { toXlm } from "@/lib/format";

@@ -1,6 +1,8 @@
 "use client";
 
 import { callContract, nativeToScVal, xdr } from "@/lib/stellar";
+import { requireContractId } from "@/lib/config";
+export { requireContractId };
 import type { Job } from "@/lib/types";
 
 export function hexToBytes(hex: string): Uint8Array {
@@ -16,14 +18,6 @@ export function hexToBytes(hex: string): Uint8Array {
     bytes[i / 2] = Number.parseInt(normalized.slice(i, i + 2), 16);
   }
   return bytes;
-}
-
-export function requireContractId(): string {
-  const contractId = process.env.NEXT_PUBLIC_CONTRACT_ID ?? "";
-  if (!contractId) {
-    throw new Error("NEXT_PUBLIC_CONTRACT_ID is not configured.");
-  }
-  return contractId;
 }
 
 export async function postJob(
