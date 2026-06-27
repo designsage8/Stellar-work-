@@ -5,10 +5,20 @@ import InfoTooltip from "@/components/InfoTooltip";
 import LoadingState from "@/components/LoadingState";
 import { useToast } from "@/components/ToastProvider";
 import StatusPill from "@/components/StatusPill";
+import RichTextRenderer, { isRichText, PlainTextRenderer } from "@/components/RichTextRenderer";
 import { useNotifications } from "@/lib/notifications-context";
 import { acceptJob, approveWork, cancelJob, freelancerCancelJob, getDescriptionCid, getJob, submitWork } from "@/lib/contract";
 import { fetchFromIpfs } from "@/lib/ipfs-service";
-import { formatDeadline, toXlm } from "@/lib/format";
+import {
+  fetchXlmFiatRates,
+  formatDeadline,
+  formatXlmFiatRateTooltip,
+  formatXlmWithFiat,
+  getCachedXlmFiatRates,
+  getPreferredFiatCurrency,
+  type FiatCurrency,
+  type XlmFiatRateCache,
+} from "@/lib/format";
 import { getExplorerTxUrl } from "@/lib/stellar";
 import { isConfirmSuppressed, CONFIRM_KEYS } from "@/lib/confirm-prefs";
 import type { Job } from "@/lib/types";
@@ -16,7 +26,6 @@ import { useWallet } from "@/lib/wallet-context";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-
 type PendingAction = "cancelJob" | "approveWork" | "submitWork" | "freelancerCancelJob";
 
 export default function JobDetailPage() {
@@ -34,6 +43,8 @@ export default function JobDetailPage() {
   const [invalidId, setInvalidId] = useState(false);
   const [copied, setCopied] = useState(false);
   const [description, setDescription] = useState<string | null>(null);
+  const [fiatCurrency, setFiatCurrency] = useState<FiatCurrency>("USD");
+  const [fiatRates, setFiatRates] = useState<XlmFiatRateCache | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const numericId = Number(id);
@@ -82,6 +93,24 @@ export default function JobDetailPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    setFiatCurrency(getPreferredFiatCurrency());
+    setFiatRates(getCachedXlmFiatRates());
+    let cancelled = false;
+
+    fetchXlmFiatRates()
+      .then((cache) => {
+        if (!cancelled) setFiatRates(cache);
+      })
+      .catch(() => {
+        if (!cancelled) setFiatRates(getCachedXlmFiatRates());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!wallet) {
@@ -208,7 +237,8 @@ export default function JobDetailPage() {
 
   // ── Confirm dialog configs ──────────────────────────────────────────────
 
-  const amountXlm = job ? `${toXlm(job.amount)} XLM` : "";
+  const amountXlm = job ? formatXlmWithFiat(job.amount, fiatCurrency, fiatRates?.rates) : "";
+  const fiatTooltip = formatXlmFiatRateTooltip(fiatCurrency, fiatRates?.rates, fiatRates?.fetchedAt);
 
   const DIALOG_CONFIG: Record<
     PendingAction,
@@ -370,8 +400,8 @@ export default function JobDetailPage() {
             "Not assigned"
           )}
         </p>
-        <p>
-          <strong>Amount:</strong> {toXlm(job.amount)} XLM
+        <p title={fiatTooltip}>
+          <strong>Amount:</strong> {formatXlmWithFiat(job.amount, fiatCurrency, fiatRates?.rates)}
         </p>
         <p>
           <strong>Token:</strong>{" "}
@@ -379,10 +409,27 @@ export default function JobDetailPage() {
             {job.token ? `${job.token.slice(0, 8)}...${job.token.slice(-4)}` : "N/A"}
           </code>
         </p>
-        <p>
-          <strong>Description:</strong>{" "}
-          {description ?? localStorage.getItem(`job-desc:${job.description_hash}`) ?? "Description unavailable (posted from another device)"}
-        </p>
+        <div>
+          <strong className="text-sm">Description:</strong>{" "}
+          {(() => {
+            const content =
+              description ??
+              localStorage.getItem(`job-desc:${job.description_hash}`) ??
+              null;
+            if (!content) {
+              return (
+                <span className="text-sm text-slate-500 italic">
+                  Description unavailable (posted from another device)
+                </span>
+              );
+            }
+            return isRichText(content) ? (
+              <RichTextRenderer html={content} className="mt-1" />
+            ) : (
+              <PlainTextRenderer text={content} className="mt-1" />
+            );
+          })()}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <p className="flex items-center gap-2">
             <strong className="inline-flex items-center gap-2">
@@ -413,6 +460,29 @@ export default function JobDetailPage() {
             return `${deadline.isPast ? "Past due" : deadline.relative} • ${deadline.exact}`;
           })()}
         </p>
+
+        {/* Message button — visible when the other party is known */}
+        {wallet && (() => {
+          const otherParty =
+            wallet === job.client ? job.freelancer :
+            wallet === job.freelancer ? job.client :
+            // Visitor: can message the client
+            job.client;
+          if (!otherParty || otherParty === wallet) return null;
+          return (
+            <div className="pt-1">
+              <Link
+                href={`/messages/${otherParty}`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14 10c0 2.21-2.686 4-6 4a7.232 7.232 0 01-3.115-.674L2 14l.897-2.392A3.954 3.954 0 012 10c0-2.21 2.686-4 6-4s6 1.79 6 4z" />
+                </svg>
+                Message {wallet === job.client ? "Freelancer" : wallet === job.freelancer ? "Client" : "Client"}
+              </Link>
+            </div>
+          );
+        })()}
 
         {!wallet && (
           <p className="text-xs text-amber-700">
