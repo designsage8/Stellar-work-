@@ -18,6 +18,8 @@ const MAX_FEE_TIERS: u32 = 10;
 #[allow(dead_code)]
 const XLM_STROOP: i128 = 10_000_000;
 const UPGRADE_TIMELOCK_SECS: u64 = 86_400;
+/// Maximum number of milestones allowed per job.
+const MAX_MILESTONES: u32 = 20;
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 518_400;
@@ -50,7 +52,28 @@ pub struct Job {
     pub revision_count: u32,
 }
 
-/// Resolution for a disputed job.
+/// A single milestone within a milestone-based job.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Milestone {
+    /// Zero-based index within the job's milestone list.
+    pub id: u32,
+    /// Optional description hash (32-byte hash of the milestone description).
+    /// All-zero bytes means no description hash was provided.
+    pub description_hash: BytesN<32>,
+    /// Amount in stroops escrowed for this milestone.
+    pub amount: i128,
+    /// Whether the client has released payment for this milestone.
+    pub is_released: bool,
+}
+
+/// Input type used when creating milestone jobs.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MilestoneInput {
+    pub description_hash: BytesN<32>,
+    pub amount: i128,
+}
 /// `client_bps` is the basis-points share (0–10 000) awarded to the client.
 /// The remainder goes to the freelancer (after platform fee).
 /// Examples:
@@ -89,6 +112,10 @@ pub enum DataKey {
     PendingUpgradeWasmHash,
     PendingUpgradeDeadline,
     DescriptionCidMapping(BytesN<32>),
+    /// Ordered list of milestones for job `job_id`.
+    JobMilestones(u64),
+    /// Number of released milestones for job `job_id` (cached for fast reads).
+    JobReleasedMilestones(u64),
 }
 
 #[contracterror]
@@ -115,6 +142,14 @@ pub enum Error {
     UpgradeNotApproved = 18,
     UpgradeTimelockPending = 19,
     NoPendingUpgrade = 20,
+    /// Milestone ID is out of range for this job.
+    MilestoneNotFound = 21,
+    /// The milestone has already been released.
+    MilestoneAlreadyReleased = 22,
+    /// Job has no milestones (wrong path — use regular approve_work instead).
+    NoMilestones = 23,
+    /// Milestone list is empty or exceeds MAX_MILESTONES.
+    InvalidMilestoneList = 24,
 }
 
 #[contract]
@@ -933,6 +968,227 @@ impl EscrowContract {
         e.events().publish(
             (Symbol::new(&e, "upgrade_cancelled"),),
             (admin, new_wasm_hash),
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Milestone-based payment splitting
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// Create a job whose total escrow is the sum of all milestone amounts.
+    ///
+    /// The job starts in `Open` status just like a regular job.  The full
+    /// escrowed amount (`sum(milestones[i].amount)`) is transferred from the
+    /// client at creation time.
+    ///
+    /// Constraints:
+    /// - `milestones` must not be empty and must not exceed `MAX_MILESTONES`.
+    /// - Every milestone amount must be > 0.
+    /// - Token must be on the allow-list.
+    /// - `deadline` == 0 means no deadline.
+    pub fn create_job_with_milestones(
+        e: Env,
+        client: Address,
+        milestones: Vec<MilestoneInput>,
+        desc_hash: BytesN<32>,
+        description_payload_len: u32,
+        deadline: u64,
+        token: Address,
+    ) -> u64 {
+        client.require_auth();
+
+        // Validate milestone list
+        if milestones.is_empty() || milestones.len() > MAX_MILESTONES {
+            panic_with_error!(&e, Error::InvalidMilestoneList);
+        }
+
+        if desc_hash == BytesN::from_array(&e, &[0u8; 32]) {
+            panic_with_error!(&e, Error::InvalidDescriptionHash);
+        }
+        if description_payload_len == 0 {
+            panic_with_error!(&e, Error::InvalidDescriptionHash);
+        }
+        if description_payload_len > get_description_payload_max_bytes_storage(&e) {
+            panic_with_error!(&e, Error::DescriptionPayloadTooLarge);
+        }
+        if deadline != 0 && e.ledger().timestamp() > deadline {
+            panic_with_error!(&e, Error::InvalidDeadline);
+        }
+        if !e.storage().persistent().has(&DataKey::AllowedToken(token.clone())) {
+            panic_with_error!(&e, Error::TokenNotAllowed);
+        }
+        enforce_client_active_job_limit(&e, &client);
+
+        // Sum milestone amounts and build the stored Vec<Milestone>
+        let mut total: i128 = 0;
+        let mut stored_milestones: Vec<Milestone> = Vec::new(&e);
+        for (idx, input) in milestones.iter().enumerate() {
+            if input.amount <= 0 {
+                panic_with_error!(&e, Error::InvalidAmount);
+            }
+            total = checked_add(&e, total, input.amount);
+            stored_milestones.push_back(Milestone {
+                id: idx as u32,
+                description_hash: input.description_hash.clone(),
+                amount: input.amount,
+                is_released: false,
+            });
+        }
+
+        // Transfer total escrow from client
+        let token_client = token::Client::new(&e, &token);
+        token_client.transfer(&client, &e.current_contract_address(), &total);
+
+        let job_id = next_job_id(&e);
+        let job = Job {
+            client: client.clone(),
+            freelancer: Option::None,
+            amount: total,
+            description_hash: desc_hash,
+            status: JobStatus::Open,
+            created_at: e.ledger().timestamp(),
+            deadline,
+            token: token.clone(),
+            revision_count: 0,
+        };
+
+        set_job(&e, job_id, &job);
+        set_job_milestones(&e, job_id, &stored_milestones);
+        e.storage()
+            .persistent()
+            .set(&DataKey::JobReleasedMilestones(job_id), &0u32);
+        bump_milestones_ttl(&e, job_id);
+        bump_instance_ttl(&e);
+
+        e.events().publish(
+            (Symbol::new(&e, "milestone_job_created"),),
+            (job_id, client, total, token, milestones.len()),
+        );
+
+        job_id
+    }
+
+    /// Release payment for a single milestone.
+    ///
+    /// Only the client may call this.  The job must be `InProgress`.
+    /// Each milestone can only be released once.
+    ///
+    /// After every milestone is released the job status automatically
+    /// transitions to `Completed`.
+    pub fn approve_milestone(e: Env, client: Address, job_id: u64, milestone_id: u32) {
+        client.require_auth();
+
+        let mut job = get_job_or_panic(&e, job_id);
+
+        if job.client != client {
+            panic_with_error!(&e, Error::Unauthorized);
+        }
+        if job.status != JobStatus::InProgress {
+            panic_with_error!(&e, Error::InvalidStatus);
+        }
+
+        let mut milestones = load_job_milestones_or_panic(&e, job_id);
+
+        let milestone_idx = milestone_id as usize;
+        if milestone_idx >= milestones.len() as usize {
+            panic_with_error!(&e, Error::MilestoneNotFound);
+        }
+
+        let mut m = milestones.get(milestone_id).unwrap();
+        if m.is_released {
+            panic_with_error!(&e, Error::MilestoneAlreadyReleased);
+        }
+
+        let freelancer = match job.freelancer.clone() {
+            Option::Some(addr) => addr,
+            Option::None => panic_with_error!(&e, Error::InvalidStatus),
+        };
+
+        // Compute fee and net payout for this milestone
+        let fee_bps = calculate_fee_for_amount(&e, m.amount);
+        let fee = checked_mul_div(&e, m.amount, fee_bps, BPS_DENOMINATOR);
+        let payout = checked_sub(&e, m.amount, fee);
+
+        // Accrue fees
+        let current_fees = get_token_fees(&e, &job.token);
+        let updated_fees = checked_add(&e, current_fees, fee);
+        e.storage()
+            .persistent()
+            .set(&DataKey::TokenFees(job.token.clone()), &updated_fees);
+        bump_token_fees_ttl(&e, &job.token);
+
+        // Mark milestone as released and persist
+        m.is_released = true;
+        milestones.set(milestone_id, m.clone());
+        set_job_milestones(&e, job_id, &milestones);
+        bump_milestones_ttl(&e, job_id);
+
+        // Increment released counter
+        let released_count: u32 = e
+            .storage()
+            .persistent()
+            .get(&DataKey::JobReleasedMilestones(job_id))
+            .unwrap_or(0u32)
+            + 1;
+        e.storage()
+            .persistent()
+            .set(&DataKey::JobReleasedMilestones(job_id), &released_count);
+
+        // Auto-complete when all milestones are released
+        let total_milestones = milestones.len();
+        if released_count >= total_milestones {
+            job.status = JobStatus::Completed;
+            set_job(&e, job_id, &job);
+        }
+        bump_instance_ttl(&e);
+
+        // Transfer net payout to freelancer
+        let token_client = token::Client::new(&e, &job.token);
+        token_client.transfer(&e.current_contract_address(), &freelancer, &payout);
+
+        e.events().publish(
+            (Symbol::new(&e, "milestone_approved"),),
+            (job_id, milestone_id, client, freelancer, payout, released_count >= total_milestones),
+        );
+    }
+
+    /// Return all milestones for `job_id`.
+    /// Panics with `JobNotFound` if the job does not exist and
+    /// `NoMilestones` if the job was not created with milestones.
+    pub fn get_milestones(e: Env, job_id: u64) -> Vec<Milestone> {
+        // Confirm job exists
+        get_job_or_panic(&e, job_id);
+        load_job_milestones_or_panic(&e, job_id)
+    }
+}
+
+fn set_job_milestones(e: &Env, job_id: u64, milestones: &Vec<Milestone>) {
+    e.storage()
+        .persistent()
+        .set(&DataKey::JobMilestones(job_id), milestones);
+}
+
+fn load_job_milestones_or_panic(e: &Env, job_id: u64) -> Vec<Milestone> {
+    e.storage()
+        .persistent()
+        .get::<DataKey, Vec<Milestone>>(&DataKey::JobMilestones(job_id))
+        .unwrap_or_else(|| panic_with_error!(e, Error::NoMilestones))
+}
+
+fn bump_milestones_ttl(e: &Env, job_id: u64) {
+    e.storage().persistent().extend_ttl(
+        &DataKey::JobMilestones(job_id),
+        ACTIVE_JOB_LIFETIME_THRESHOLD,
+        ACTIVE_JOB_BUMP_AMOUNT,
+    );
+    if e.storage()
+        .persistent()
+        .has(&DataKey::JobReleasedMilestones(job_id))
+    {
+        e.storage().persistent().extend_ttl(
+            &DataKey::JobReleasedMilestones(job_id),
+            ACTIVE_JOB_LIFETIME_THRESHOLD,
+            ACTIVE_JOB_BUMP_AMOUNT,
         );
     }
 }
@@ -6676,5 +6932,307 @@ mod test {
             Op::CancelJob { job_idx: 2 },
         ];
         run_ops(&ops);
+    }
+
+    // ── Milestone tests ────────────────────────────────────────────────────
+
+    fn milestone_input(env: &Env, amount: i128) -> MilestoneInput {
+        MilestoneInput {
+            description_hash: BytesN::from_array(env, &[0x42u8; 32]),
+            amount,
+        }
+    }
+
+    fn make_milestones(env: &Env, amounts: &[i128]) -> Vec<MilestoneInput> {
+        let mut ms = Vec::new(env);
+        for &a in amounts {
+            ms.push_back(milestone_input(env, a));
+        }
+        ms
+    }
+
+    /// Happy path: create a 3-milestone job, accept it, release each milestone
+    /// individually, and verify the job auto-completes on the last release.
+    #[test]
+    fn milestone_happy_path_three_milestones() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let token_client = token::Client::new(&env, &native_token);
+
+        let amounts = [400_000i128, 300_000, 300_000];
+        let total: i128 = amounts.iter().sum();
+
+        let milestones = make_milestones(&env, &amounts);
+        let job_id = client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+
+        // Job is Open and escrows the total
+        let job = client.get_job(&job_id);
+        assert_eq!(job.status, JobStatus::Open);
+        assert_eq!(job.amount, total);
+
+        // Accept moves job to InProgress
+        client.accept_job(&freelancer, &job_id);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::InProgress);
+
+        // get_milestones returns the stored list
+        let stored = client.get_milestones(&job_id);
+        assert_eq!(stored.len(), 3);
+        for (i, m) in stored.iter().enumerate() {
+            assert_eq!(m.id, i as u32);
+            assert_eq!(m.amount, amounts[i]);
+            assert!(!m.is_released);
+        }
+
+        // Release milestone 0
+        let pre_bal = token_client.balance(&freelancer);
+        let fee0 = amounts[0] * DEFAULT_FEE_BPS / BPS_DENOMINATOR;
+        let payout0 = amounts[0] - fee0;
+        client.approve_milestone(&user, &job_id, &0);
+        assert_eq!(token_client.balance(&freelancer) - pre_bal, payout0);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::InProgress);
+        assert!(client.get_milestones(&job_id).get(0).unwrap().is_released);
+
+        // Release milestone 1
+        let pre_bal = token_client.balance(&freelancer);
+        let fee1 = amounts[1] * DEFAULT_FEE_BPS / BPS_DENOMINATOR;
+        let payout1 = amounts[1] - fee1;
+        client.approve_milestone(&user, &job_id, &1);
+        assert_eq!(token_client.balance(&freelancer) - pre_bal, payout1);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::InProgress);
+
+        // Release milestone 2 — job auto-completes
+        let pre_bal = token_client.balance(&freelancer);
+        let fee2 = amounts[2] * DEFAULT_FEE_BPS / BPS_DENOMINATOR;
+        let payout2 = amounts[2] - fee2;
+        client.approve_milestone(&user, &job_id, &2);
+        assert_eq!(token_client.balance(&freelancer) - pre_bal, payout2);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::Completed);
+
+        // Total fees accrued equals sum of per-milestone fees
+        let expected_fees = fee0 + fee1 + fee2;
+        assert_eq!(client.get_fees(&native_token), expected_fees);
+    }
+
+    /// create_job_with_milestones escrows the exact sum of all milestone amounts.
+    #[test]
+    fn milestone_escrow_equals_total_amounts() {
+        let (env, client, _, user, _, native_token) = setup();
+        let token_client = token::Client::new(&env, &native_token);
+        let contract_address = client.address.clone();
+
+        let amounts = [1_000_000i128, 2_000_000, 500_000];
+        let total: i128 = amounts.iter().sum();
+        let milestones = make_milestones(&env, &amounts);
+
+        let pre_contract = token_client.balance(&contract_address);
+        let pre_user = token_client.balance(&user);
+
+        client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+
+        assert_eq!(token_client.balance(&contract_address) - pre_contract, total);
+        assert_eq!(pre_user - token_client.balance(&user), total);
+    }
+
+    /// Releasing the same milestone twice must panic with MilestoneAlreadyReleased (#22).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #22)")]
+    fn milestone_double_release_panics() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let milestones = make_milestones(&env, &[1_000_000i128, 1_000_000]);
+        let job_id = client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+        client.accept_job(&freelancer, &job_id);
+        client.approve_milestone(&user, &job_id, &0);
+        client.approve_milestone(&user, &job_id, &0); // must panic
+    }
+
+    /// Releasing a milestone with an out-of-range ID must panic with MilestoneNotFound (#21).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #21)")]
+    fn milestone_out_of_range_id_panics() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let milestones = make_milestones(&env, &[1_000_000i128]);
+        let job_id = client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+        client.accept_job(&freelancer, &job_id);
+        client.approve_milestone(&user, &job_id, &99); // only milestone 0 exists
+    }
+
+    /// Only the client may approve a milestone; a non-client caller gets Unauthorized (#2).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #2)")]
+    fn milestone_approve_by_non_client_panics() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let milestones = make_milestones(&env, &[1_000_000i128]);
+        let job_id = client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+        client.accept_job(&freelancer, &job_id);
+        client.approve_milestone(&freelancer, &job_id, &0); // must panic
+    }
+
+    /// approve_milestone on a job that is not InProgress must panic with InvalidStatus (#3).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #3)")]
+    fn milestone_approve_on_open_job_panics() {
+        let (env, client, _, user, _, native_token) = setup();
+        let milestones = make_milestones(&env, &[1_000_000i128]);
+        let job_id = client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+        // Job is still Open — approve_milestone must reject it
+        client.approve_milestone(&user, &job_id, &0);
+    }
+
+    /// get_milestones on a non-milestone job must panic with NoMilestones (#23).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #23)")]
+    fn get_milestones_on_regular_job_panics() {
+        let (env, client, _, user, _, native_token) = setup();
+        let job_id = client.post_job(
+            &user,
+            &1_000_000i128,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+        client.get_milestones(&job_id);
+    }
+
+    /// create_job_with_milestones with an empty milestone list must panic with InvalidMilestoneList (#24).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #24)")]
+    fn milestone_empty_list_panics() {
+        let (env, client, _, user, _, native_token) = setup();
+        let milestones: Vec<MilestoneInput> = Vec::new(&env);
+        client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+    }
+
+    /// create_job_with_milestones with a milestone amount of 0 must panic with InvalidAmount (#11).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #11)")]
+    fn milestone_zero_amount_panics() {
+        let (env, client, _, user, _, native_token) = setup();
+        let milestones = make_milestones(&env, &[1_000_000i128, 0, 500_000]);
+        client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+    }
+
+    /// Milestone payout + fee == milestone amount (conservation invariant per milestone).
+    #[test]
+    fn milestone_payout_plus_fee_equals_amount() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let token_client = token::Client::new(&env, &native_token);
+        let amount = 1_000_000i128;
+
+        let milestones = make_milestones(&env, &[amount]);
+        let job_id = client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+        client.accept_job(&freelancer, &job_id);
+
+        let pre_freelancer = token_client.balance(&freelancer);
+        client.approve_milestone(&user, &job_id, &0);
+        let payout = token_client.balance(&freelancer) - pre_freelancer;
+        let fee = client.get_fees(&native_token);
+
+        assert_eq!(payout + fee, amount, "payout + fee must equal milestone amount");
+    }
+
+    /// Single-milestone job auto-completes when the one milestone is released.
+    #[test]
+    fn milestone_single_milestone_auto_completes() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let milestones = make_milestones(&env, &[1_000_000i128]);
+        let job_id = client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+        client.accept_job(&freelancer, &job_id);
+        client.approve_milestone(&user, &job_id, &0);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::Completed);
+    }
+
+    /// Milestones can be released out of order; all that matters is every
+    /// milestone is eventually released for the job to complete.
+    #[test]
+    fn milestone_release_out_of_order_completes_job() {
+        let (env, client, _, user, freelancer, native_token) = setup();
+        let milestones = make_milestones(&env, &[500_000i128, 500_000, 500_000]);
+        let job_id = client.create_job_with_milestones(
+            &user,
+            &milestones,
+            &hash(&env),
+            &32u32,
+            &0u64,
+            &native_token,
+        );
+        client.accept_job(&freelancer, &job_id);
+
+        // Release 2 first, then 0, then 1
+        client.approve_milestone(&user, &job_id, &2);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::InProgress);
+        client.approve_milestone(&user, &job_id, &0);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::InProgress);
+        client.approve_milestone(&user, &job_id, &1);
+        assert_eq!(client.get_job(&job_id).status, JobStatus::Completed);
     }
 }

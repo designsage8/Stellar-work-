@@ -3,7 +3,7 @@
 import { callContract, nativeToScVal, xdr } from "@/lib/stellar";
 import { requireContractId } from "@/lib/config";
 export { requireContractId };
-import type { Job } from "@/lib/types";
+import type { Job, Milestone } from "@/lib/types";
 
 export function hexToBytes(hex: string): Uint8Array {
   const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
@@ -208,4 +208,88 @@ export async function getDescriptionCid(descHashHex: string): Promise<string | n
   );
   const cid = response.data as string;
   return cid || null;
+}
+
+// ─── Milestone helpers ────────────────────────────────────────────────────────
+
+/** Input for a single milestone when creating a milestone-based job. */
+export interface MilestoneInput {
+  /** 32-byte description hash as a hex string (64 hex chars). */
+  descriptionHashHex: string;
+  /** Amount in stroops as a string. */
+  amount: string;
+}
+
+/**
+ * Create a job whose total escrow is the sum of all milestone amounts.
+ * Returns the new job ID.
+ */
+export async function createJobWithMilestones(
+  client: string,
+  milestones: MilestoneInput[],
+  descHashHex: string,
+  descriptionPayloadLen: number,
+  deadline: string,
+  tokenAddress: string,
+) {
+  // Encode milestones as a Vec<MilestoneInput> — each element is a struct map.
+  const encodedMilestones = xdr.ScVal.scvVec(
+    milestones.map((m) =>
+      xdr.ScVal.scvMap([
+        new xdr.ScMapEntry({
+          key: xdr.ScVal.scvSymbol("description_hash"),
+          val: nativeToScVal(hexToBytes(m.descriptionHashHex), { type: "bytes" }),
+        }),
+        new xdr.ScMapEntry({
+          key: xdr.ScVal.scvSymbol("amount"),
+          val: nativeToScVal(m.amount, { type: "i128" }),
+        }),
+      ])
+    )
+  );
+
+  return callContract(requireContractId(), "create_job_with_milestones", [
+    nativeToScVal(client, { type: "address" }),
+    encodedMilestones,
+    nativeToScVal(hexToBytes(descHashHex), { type: "bytes" }),
+    nativeToScVal(descriptionPayloadLen, { type: "u32" }),
+    nativeToScVal(deadline, { type: "u64" }),
+    nativeToScVal(tokenAddress, { type: "address" }),
+  ]);
+}
+
+/**
+ * Release payment for a single milestone.
+ * Only the client may call this; the job must be InProgress.
+ */
+export async function approveMilestone(
+  client: string,
+  jobId: string,
+  milestoneId: number,
+) {
+  return callContract(requireContractId(), "approve_milestone", [
+    nativeToScVal(client, { type: "address" }),
+    nativeToScVal(jobId, { type: "u64" }),
+    nativeToScVal(milestoneId, { type: "u32" }),
+  ]);
+}
+
+/**
+ * Fetch all milestones for a job.
+ * Returns null if the job has no milestones (regular job).
+ */
+export async function getMilestones(jobId: string): Promise<Milestone[] | null> {
+  try {
+    const response = await callContract(
+      requireContractId(),
+      "get_milestones",
+      [nativeToScVal(jobId, { type: "u64" })],
+      { readOnly: true },
+    );
+    if (!response.data) return null;
+    return response.data as Milestone[];
+  } catch {
+    // Contract panics with NoMilestones (#23) for regular jobs — treat as null.
+    return null;
+  }
 }

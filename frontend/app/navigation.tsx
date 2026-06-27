@@ -79,6 +79,7 @@ export function Navigation() {
     { href: "/", label: "Jobs" },
     { href: "/post-job", label: "Post Job", shortcut: "n" },
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/transactions", label: "Transactions" },
     { href: "/disputes", label: "Disputes" },
   ];
 
