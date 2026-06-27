@@ -18,6 +18,8 @@ const MAX_FEE_TIERS: u32 = 10;
 #[allow(dead_code)]
 const XLM_STROOP: i128 = 10_000_000;
 const UPGRADE_TIMELOCK_SECS: u64 = 86_400;
+/// Maximum number of milestones allowed per job.
+const MAX_MILESTONES: u32 = 20;
 
 const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
 const INSTANCE_BUMP_AMOUNT: u32 = 518_400;
@@ -50,7 +52,28 @@ pub struct Job {
     pub revision_count: u32,
 }
 
-/// Resolution for a disputed job.
+/// A single milestone within a milestone-based job.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Milestone {
+    /// Zero-based index within the job's milestone list.
+    pub id: u32,
+    /// Optional description hash (32-byte hash of the milestone description).
+    /// All-zero bytes means no description hash was provided.
+    pub description_hash: BytesN<32>,
+    /// Amount in stroops escrowed for this milestone.
+    pub amount: i128,
+    /// Whether the client has released payment for this milestone.
+    pub is_released: bool,
+}
+
+/// Input type used when creating milestone jobs.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MilestoneInput {
+    pub description_hash: BytesN<32>,
+    pub amount: i128,
+}
 /// `client_bps` is the basis-points share (0–10 000) awarded to the client.
 /// The remainder goes to the freelancer (after platform fee).
 /// Examples:

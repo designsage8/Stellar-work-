@@ -1,5 +1,10 @@
 # StellarWork
 
+[![Production Deployment](https://img.shields.io/github/actions/workflow/status/your-org/Stellar-work-/deploy-production.yml?branch=main&label=production&logo=vercel)](https://github.com/your-org/Stellar-work-/actions/workflows/deploy-production.yml)
+[![Preview Deployments](https://img.shields.io/github/actions/workflow/status/your-org/Stellar-work-/deploy-preview.yml?label=preview&logo=vercel)](https://github.com/your-org/Stellar-work-/actions/workflows/deploy-preview.yml)
+[![Frontend CI](https://img.shields.io/github/actions/workflow/status/your-org/Stellar-work-/frontend.yml?label=frontend+ci&logo=github)](https://github.com/your-org/Stellar-work-/actions/workflows/frontend.yml)
+[![Contract CI](https://img.shields.io/github/actions/workflow/status/your-org/Stellar-work-/contract.yml?label=contract+ci&logo=rust)](https://github.com/your-org/Stellar-work-/actions/workflows/contract.yml)
+
 StellarWork is an open-source decentralized freelance marketplace on Stellar. Payments are held in Soroban escrow and released by state transitions, not platform custody logic.
 
 ## Repository Layout
@@ -213,6 +218,15 @@ Copy `frontend/.env.example` to `frontend/.env.local` and set the required varia
 | `NEXT_PUBLIC_WEB3_STORAGE_TOKEN` | No | — | Web3.storage token for IPFS uploads |
 
 The frontend validates configuration at runtime via `lib/config.ts`. Missing required variables produce clear error messages. See `docs/environments.md` for the full reference including Testnet/Mainnet notes.
+
+## Vercel Deployment
+
+The frontend is deployed to Vercel automatically:
+
+- **Production** — every push to `main` that changes `frontend/**` triggers a production deployment.
+- **Preview** — every pull request gets a unique preview URL, posted as a comment by the GitHub Actions bot.
+
+See [docs/DEPLOY.md](docs/DEPLOY.md) for the full setup guide (creating the Vercel project, required GitHub secrets, environment variable configuration, and troubleshooting).
 
 For a command-only deployment reference, see `docs/testnet-deployment-guide.md`.
 For environment configuration, see `docs/environments.md`.

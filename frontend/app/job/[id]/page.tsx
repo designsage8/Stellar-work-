@@ -253,7 +253,14 @@ export default function JobDetailPage() {
           <strong>Client:</strong> {job.client}
         </p>
         <p>
-          <strong>Freelancer:</strong> {job.freelancer ?? "Not assigned"}
+          <strong>Freelancer:</strong>{" "}
+          {job.freelancer ? (
+            <Link href={`/profile/${job.freelancer}`} className="font-mono text-blue-600 hover:underline text-sm">
+              {job.freelancer}
+            </Link>
+          ) : (
+            "Not assigned"
+          )}
         </p>
         <p>
           <strong>Amount:</strong> {toXlm(job.amount)} XLM

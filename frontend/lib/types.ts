@@ -18,6 +18,14 @@ export interface Job {
   revision_count: number;
 }
 
+/** A single milestone within a milestone-based job. */
+export interface Milestone {
+  id: number;
+  description_hash: string;
+  amount: string; // stroops as string
+  is_released: boolean;
+}
+
 export type NotificationEvent =
   | "job_accepted"
   | "work_submitted"
