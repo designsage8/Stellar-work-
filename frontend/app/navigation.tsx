@@ -75,9 +75,9 @@ export function Navigation() {
   const adminAddress = process.env.NEXT_PUBLIC_ADMIN_ADDRESS;
   const showAdmin = wallet && (adminAddress ? wallet === adminAddress : true);
 
-  const links: Array<{ href: string; label: string }> = [
+  const links: Array<{ href: string; label: string; shortcut?: string }> = [
     { href: "/", label: "Jobs" },
-    { href: "/post-job", label: "Post Job" },
+    { href: "/post-job", label: "Post Job", shortcut: "n" },
     { href: "/dashboard", label: "Dashboard" },
     { href: "/disputes", label: "Disputes" },
   ];
@@ -98,6 +98,12 @@ export function Navigation() {
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4">
+        <Link href="/" className="shrink-0 text-lg font-semibold">
+          StellarWork
+        </Link>
+        <kbd className="hidden rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 lg:inline-block">
+          ⌘K
+        </kbd>
         <div className="flex min-w-0 items-center gap-3">
           <Link href="/" className="shrink-0 text-lg font-semibold">
             StellarWork
@@ -110,6 +116,7 @@ export function Navigation() {
             aria-label="Main navigation"
             className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm"
           >
+              {links.map(({ href, label, shortcut }) => (
             {links.map(({ href, label }) => (
               <Link
                 key={href}
@@ -119,8 +126,14 @@ export function Navigation() {
                     ? "font-semibold text-slate-900"
                     : "text-slate-600 hover:text-slate-900"
                 }
+                aria-label={`${label}${shortcut ? ` (shortcut: ${shortcut})` : ""}`}
               >
                 {label}
+                {shortcut && (
+                  <kbd className="ml-1 rounded border border-slate-200 bg-slate-50 px-1 py-0.5 text-[10px] font-medium text-slate-400">
+                    {shortcut}
+                  </kbd>
+                )}
               </Link>
             ))}
           </nav>
@@ -167,6 +180,7 @@ export function Navigation() {
           onKeyDown={handleMenuKeyDown}
         >
           <nav aria-label="Main navigation" className="flex flex-col gap-2 text-sm">
+             {links.map(({ href, label, shortcut }) => (
             {links.map(({ href, label }, index) => (
               <Link
                 key={href}
@@ -177,12 +191,19 @@ export function Navigation() {
                     ? "rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-900"
                     : "rounded-md px-2 py-1 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }
+                onClick={() => setMenuOpen(false)}
+                aria-label={`${label}${shortcut ? ` (shortcut: ${shortcut})` : ""}`}
                 onClick={() => {
                   setMenuOpen(false);
                   menuButtonRef.current?.focus();
                 }}
               >
                 {label}
+                {shortcut && (
+                  <kbd className="ml-1 rounded border border-slate-200 bg-slate-50 px-1 py-0.5 text-[10px] font-medium text-slate-400">
+                    {shortcut}
+                  </kbd>
+                )}
               </Link>
             ))}
           </nav>
