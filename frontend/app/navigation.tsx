@@ -117,8 +117,7 @@ export function Navigation() {
             aria-label="Main navigation"
             className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm"
           >
-              {links.map(({ href, label, shortcut }) => (
-            {links.map(({ href, label }) => (
+            {links.map(({ href, label, shortcut }) => (
               <Link
                 key={href}
                 href={href}
@@ -181,8 +180,7 @@ export function Navigation() {
           onKeyDown={handleMenuKeyDown}
         >
           <nav aria-label="Main navigation" className="flex flex-col gap-2 text-sm">
-             {links.map(({ href, label, shortcut }) => (
-            {links.map(({ href, label }, index) => (
+            {links.map(({ href, label, shortcut }, index) => (
               <Link
                 key={href}
                 ref={index === 0 ? firstLinkRef : index === links.length - 1 ? lastLinkRef : undefined}
@@ -192,7 +190,6 @@ export function Navigation() {
                     ? "rounded-md bg-slate-100 px-2 py-1 font-semibold text-slate-900"
                     : "rounded-md px-2 py-1 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }
-                onClick={() => setMenuOpen(false)}
                 aria-label={`${label}${shortcut ? ` (shortcut: ${shortcut})` : ""}`}
                 onClick={() => {
                   setMenuOpen(false);
